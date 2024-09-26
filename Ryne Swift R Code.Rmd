@@ -1,0 +1,665 @@
+---
+title: "Ryne Swift R Code"
+output:
+  html_document: default
+  pdf_document: default
+date: "2024-04-17"
+---
+
+Loading the required libraries
+```{r}
+library(kernlab)
+library(randomForest)
+```
+
+Figure 4.1 Plot Functions and Code
+```{r}
+wElos = function(dataset){
+  whiteElos = numeric(length(dataset))
+  for(i in 1:length(dataset))
+    whiteElos[i] = as.numeric(dataset[[i]]$game_info$white_elo)
+  
+  return(whiteElos)
+}
+bElos = function(dataset){
+  blackElos = numeric(length(dataset))
+  
+  for(i in 1:length(dataset))
+    blackElos[i] = as.numeric(dataset[[i]]$game_info$black_elo)
+  
+  return(blackElos)
+}
+
+json_text <- readLines("C:/Users/ryne0/OneDrive/Documents/R/win-library/4.0/javaCode/Databases/Research Project/SoDatasetFinalized2NoFenListNoNull.json", warn = FALSE)
+json_data <- jsonlite::fromJSON(txt = json_text, simplifyVector = FALSE)
+
+whiteElos = wElos(json_data)
+blackElos = bElos(json_data)
+dataToPlot = data.frame(x = whiteElos, y = blackElos)
+```
+
+
+
+Figure 4.2 Function
+```{r}
+scatterplot_with_subgrid_colors7 <- function(dataset) {
+  # Create a color palette with 100 distinct colors
+  twentyColours <- rainbow(20)
+  
+  # Define custom boundaries for the 10 main grids
+  main_boundaries <- c(1, 1900, 2080, 2170, 2240, 2300, 2370, 2420, 2480, 2540, 3000)
+  
+  # Create custom boundaries for subgrids within each of the 10 main grids
+  subgrid_boundaries <- list(
+    first = c(1, 1250, 1480, 1610, 1730, 1820, 1910, 1990, 2070, 2170, 2840),
+    second = c(800, 1780, 1910, 2010, 2080, 2130, 2170, 2220, 2270, 2350, 2800),
+    third = c(100, 1930, 2030, 2090, 2150, 2200, 2240, 2290, 2340, 2410, 2770),
+    fourth = c(800, 2010, 2080, 2150, 2200, 2250, 2300, 2340, 2390, 2450, 2760),
+    fifth = c(911, 2060, 2140, 2200, 2240, 2290, 2340, 2380, 2420, 2480, 2820),
+    sixth = c(936, 2100, 2180, 2230, 2280, 2320, 2370, 2420, 2460, 2520, 2780),
+    seventh = c(1290, 2150, 2220, 2270, 2320, 2360, 2400, 2450, 2500, 2540, 2800),
+    eighth = c(243, 2200, 2280, 2320, 2370, 2410, 2450, 2490, 2530, 2570, 2820),
+    ninth = c(936, 2260, 2340, 2390, 2420, 2460, 2500, 2520, 2560, 2600, 3000),
+    tenth = c(1390, 2330, 2420, 2460, 2500, 2530, 2560, 2590, 2620, 2650, 2880)
+  )
+  subgridVector = NULL
+  tempColour = NULL
+  tempX = 0
+  
+  tempY = 0
+  subgridNumber = 1
+  subsubgridNumber = 1
+  
+  for (i in 1:nrow(dataset)){
+    tempX = dataset[i,]$x
+    tempY = dataset[i,]$y
+    
+    if (i==1)
+      plot(tempX, tempY, pch = 19, col = "white", xlab = "White Elos", ylab = "Black Elos", main = "Plot of the White and Black Elo Grids", xlim = c(0, 3000), ylim = c(0,3000))
+    else{
+      #Running through the main boundaries
+      for (j in 1:10){
+      
+          #Determines which grid number the value of x is in 
+        if(j==1){
+          if((main_boundaries[j] <= tempX) && ( tempX<= main_boundaries[j+1])){
+            subgridNumber = j        #Needed to extract the subgrid vectors
+            break
+          }
+        }
+        #Need these different if statements because of the different domains. Think grade 10 ( ]
+        else if ((1< j)&& (j <10)){
+          if((main_boundaries[j] <= tempX) && ( tempX<= main_boundaries[j+1])){
+            subgridNumber = j        #Needed to extract the subgrid vectors
+            break
+          }
+        }
+        
+        else{
+          subgridNumber = j
+        }
+      }
+      subgridVector = subgrid_boundaries[[subgridNumber]]
+      
+      #10*subgridNumber + j
+      
+      for(k in 1:10){
+        
+        #Determines which subgrid number the value of y is in 
+        if(k==1){
+          if((subgridVector[k] <= tempY) && (tempY <= subgridVector[k+1])){
+            subsubgridNumber = k        #Needed to extract the correct rainbow color
+            break
+          }
+        }
+        #Need these different if statements because of the different domains. Think grade 10 ( ]
+        else if ((1< k) && (k <10)){
+          if((subgridVector[k] <= tempY) && (tempY <= subgridVector[k+1])){
+            subsubgridNumber = k        #Needed to extract the subgrid vectors
+            break
+          }
+        }
+        else
+          subsubgridNumber = k
+      }
+      #ChatGPT begins
+      tempColour = twentyColours[((subgridNumber - 1) * 10 + subsubgridNumber) %% length(twentyColours) + 1]
+      #ChatGPT ends
+      
+      points(x = tempX, y = tempY, pch = 19, col = tempColour)
+    }
+  }
+}
+```
+
+
+
+Figure 4.2
+```{r}
+#Visualization of the layout of the data that is to be predicted for
+scatterplot_with_subgrid_colors7(dataToPlot)
+```
+
+
+
+
+
+Turning a dataset into a dataframe
+```{r}
+#excluding the number of fen_draws, fen_blacks, and fen_whites because almost all of them are 0
+
+dataFrameBuilder2 = function(dataset){
+  
+  #will be used to initialize the dataframe. will only add itself once
+  initializer = 1
+  
+  numAcceptableFenEvals = 0
+  
+  #acceptablePlacementsOfFenEvals will hold the location of the fen_evals with 40 or more moves
+
+  for (i in 1:length(dataset)){
+    numAcceptableFenEvals = numAcceptableFenEvals + 1
+  }
+  
+  #Creating a vector of zeros 
+  numeric0 = numeric(numAcceptableFenEvals)
+  repetitiveString = c(rep(c(""), numAcceptableFenEvals))
+  
+  #Initialize the dataframe and their names, and then replace the values row by row
+  
+  newDataFrame = data.frame(fen_eval = numeric0, sum_eval = numeric0, white_elo = numeric0, black_elo = numeric0, black_avg_elo = numeric0, black = repetitiveString, result = numeric0, white_avg_elo = numeric0, white = repetitiveString, white_win = numeric0, white_draw = numeric0, white_lose = numeric0, black_win = numeric0, black_draw = numeric0, black_lose = numeric0, deltaAvgElo = numeric0, whiteWinPercent = numeric0, whiteDrawPercent = numeric0, whiteLosePercent = numeric0, blackWinPercent = numeric0, blackDrawPercent = numeric0, blackLosePercent = numeric0, deltaPercentWhite = numeric0, deltaPercentBlack = numeric0, deltaDiffWhite = numeric0, deltaDiffBlack = numeric0)
+  
+  counter = 1
+  
+  for (i in 1:length(dataset)){
+    
+    #will hold the rows that will be added to the dataframe
+    newRow = NULL
+    
+    
+    #first is a chess game
+    first = dataset[[i]]$game_info                        #naming this to improve readability
+    
+    
+    deltaAvgElo = first$white_avg_elo - first$black_avg_elo
+
+    #Make sure to handle exceptions 
+    whiteWinPercent = (first$white_win / (first$white_win + first$white_draw + first$white_lose)) * 100
+    whiteDrawPercent = (first$white_draw / (first$white_win + first$white_draw + first$white_lose)) * 100
+    whiteLosePercent = (first$white_lose / (first$white_win + first$white_draw + first$white_lose)) * 100
+
+    #check if the denominator of the above equations is 0, if it is then white didn't win, draw or lose any other chess games because they didn't play any other chess games
+    #skips over the game and doesn't add it to the dataframe if runs as true
+    if (is.na(whiteWinPercent)){
+      next
+    }
+      
+      
+    blackWinPercent = (first$black_win / (first$black_win + first$black_draw + first$black_lose)) * 100
+    blackDrawPercent = (first$black_draw / (first$black_win + first$black_draw + first$black_lose)) * 100
+    blackLosePercent = (first$black_win / (first$black_win + first$black_draw + first$black_lose)) * 100
+    
+    #check if the denominator of the above equations is 0, if it is then black didn't win, draw or lose any other chess games because they didn't play any other chess games
+    #skips over the game and doesn't add it to the dataframe if runs as true
+    if (is.na(blackWinPercent)){
+      next
+    }
+    
+    deltaPercentWhite = whiteWinPercent - whiteDrawPercent - whiteLosePercent
+    deltaPercentBlack = blackWinPercent - blackDrawPercent - blackLosePercent
+    
+    deltaDiffWhite = first$white_win - first$white_lose
+    deltaDiffBlack = first$black_win - first$black_lose
+      
+      
+    #fen_eval is a list of lists, so need the extra [[1]]
+    #40 because that is the 40th half move
+    
+    newDataFrame[counter, ] = c(as.numeric(as.numeric(first$fen_eval)), as.numeric(first$sum_eval), as.numeric(first$white_elo), as.numeric(first$black_elo), as.numeric(first$black_avg_elo), first$black, as.numeric(first$result), as.numeric(first$white_avg_elo), first$white, as.numeric(first$white_win), as.numeric(first$white_draw), as.numeric(first$white_lose), as.numeric(first$black_win), as.numeric(first$black_draw), as.numeric(first$black_lose), as.numeric(deltaAvgElo), as.numeric(whiteWinPercent), as.numeric(whiteDrawPercent), as.numeric(whiteLosePercent), as.numeric(blackWinPercent), as.numeric(blackDrawPercent), as.numeric(blackLosePercent), as.numeric(deltaPercentWhite), as.numeric(deltaPercentBlack), as.numeric(deltaDiffWhite), as.numeric(deltaDiffBlack))
+      
+      #initializing the dataframe
+      counter = counter + 1
+    
+  }
+  #ChatGPT begins
+  numeric_columns <- c("fen_eval", "sum_eval", "white_elo", "black_elo", "black_avg_elo", "result", "white_avg_elo", "white_win", "white_draw", "white_lose", "black_win", "black_draw", "black_lose", "deltaAvgElo", "whiteWinPercent", "whiteDrawPercent", "whiteLosePercent", "blackWinPercent", "blackDrawPercent", "blackLosePercent", "deltaPercentWhite", "deltaPercentBlack", "deltaDiffWhite", "deltaDiffBlack")
+  newDataFrame[, numeric_columns] <- lapply(newDataFrame[, numeric_columns], as.numeric)
+  #ChatGPT ends
+  
+  return (newDataFrame)
+}
+```
+
+
+
+
+Dividing the points in the dataframe into training data and test data and reducing the dataframes to a handful of columns, as well as getting the percent number of games that the prediction got correct
+```{r}
+#dataset will be a dataframe containing all the data
+trainingTestingDataset = function(dataset){
+  
+  trainTestVector = c()
+  
+  for (i in 1:nrow(dataset)) {
+
+    #0 assigned for training data, and 1 for testing data
+    if((runif(1, min = 0, max = 1)) <= 0.7)
+      trainTestVector = c(trainTestVector, 0)
+    
+    else
+      trainTestVector = c(trainTestVector, 1)
+    
+  }
+  dataset$trainTest = trainTestVector
+  return(dataset)
+}
+
+
+#set draws to true if predicting wins, draws and losses
+dataFrameReducer = function(dataset, draws){
+  
+  newDataFrame = NULL
+  #runs if predicting wins, draws and losses
+  if (draws){
+    newDataFrame = dataset[, c(1, 2, 7, seq(16, ncol(dataset)))] #includes variables delta_avg_elo to                                                                  #delta_black and testTrain
+  }
+  #runs if predicting wins and losses only
+  else if(!draws){
+    newDataFrame = dataset[, c(1, 2, 7, seq(16, 24), ncol(dataset))]  #excludes delta white and black
+  }
+  
+  return(newDataFrame)
+}
+
+
+trainingOrTestingDataOnly2 = function(dataset, extractTraining) {
+  if (extractTraining) {
+    trainOrTest = 0
+  } else {
+    trainOrTest = 1
+  }
+  
+  subset_data = dataset[dataset$trainTest == trainOrTest, ]
+  return(subset_data)
+}
+
+
+
+#predictedResults should be a string
+#testingDataframe should include the results column, as well as the testTrain column
+
+percentMatches = function(predictedResults, testingDataframe, includeDraws){
+  
+  blackWinMatches = 0
+  blackTotal = 0
+  
+  drawMatches = 0
+  drawTotal = 0
+  
+  whiteWinMatches = 0
+  whiteTotal = 0
+  
+  for (i in 1:nrow(testingDataframe)){
+
+    if (predictedResults[i] == "black win"){
+      blackTotal = blackTotal + 1
+      if (testingDataframe[i,]$result == -1)
+        blackWinMatches = blackWinMatches + 1
+    }
+    else if ((predictedResults[i] == "draw") && (includeDraws)){
+      drawTotal = drawTotal + 1
+      if (testingDataframe[i,]$result == 0)
+        drawMatches = drawMatches + 1
+    }
+    
+     else if (predictedResults[i] == "white win"){
+       whiteTotal = whiteTotal + 1
+       if (testingDataframe[i,]$result == 1)
+          whiteWinMatches = whiteWinMatches + 1
+     }
+  }
+  
+  blackWinMatchPercent = (blackWinMatches/blackTotal) * 100
+  drawMatchPercent = (drawMatches/drawTotal) * 100
+  whiteWinMatchPercent = (whiteWinMatches/whiteTotal) * 100
+  
+  if (is.na(blackWinMatchPercent))
+    blackWinMatchPercent = NA
+  if (is.na(drawMatchPercent))
+    drawMatchPercent = NA
+  if (is.na(whiteWinMatchPercent))
+    whiteWinMatchPercent = NA
+  
+  
+  if (includeDraws == TRUE)
+    return( c(blackWinMatchPercent, drawMatchPercent, whiteWinMatchPercent))
+  else 
+    return( c(blackWinMatchPercent, drawMatchPercent, whiteWinMatchPercent))
+}
+```
+
+
+
+
+Model building for the SVM and random forest models
+```{r}
+getBestModel2 = function(dataset, c, chosenColumns, includeDraws){
+
+  listOfFenEvals = list()
+  err = 0
+  model = list()
+  modelList = list()
+  
+  results = factor(dataset$result, levels = c(-1, 0, 1), labels = c("black win", "draw", "white win"))
+  
+  if(!includeDraws)
+    results = factor(dataset$result, levels = c(-1, 1), labels = c("black win", "white win"))
+
+  for (i in 1:length(c)){
+
+    model = ksvm(x = as.matrix(dataset[, chosenColumns]), y=results, type = "C-svc", C = c[i], cross = 3)
+    modelList = list(modelList, list(model))
+    err[i] = cross(model)
+  }
+
+  n = which.min(err)
+  model = unlist(modelList)[n]
+  return(model[[1]])
+}
+
+
+#modified from the paper I'm working off of
+get_best_rf_model = function(dataset, trees, chosenColumns, includeDraws){
+  tab = table(dataset$result)
+  num = round(tab[which.min(tab)]*0.3)
+  re = length(table(dataset$result))
+  
+  samp = rep(num, re)
+
+  modelList = list()
+  model = NULL
+  err3 = 0
+  
+  results = factor(dataset$result, levels = c(-1, 0, 1), labels = c("black win", "draw", "white win"))
+  
+  if(!includeDraws)
+    results = factor(dataset$result, levels = c(-1, 1), labels = c("black win", "white win"))
+
+  for (i in 1:length(trees)){
+    
+    rf = randomForest(y = results, x = dataset[, chosenColumns], ntree = trees[i], proximity = FALSE, strata = results, sampsize = samp[1])
+    modelList = c(modelList, list(rf))
+    
+    err3[i] = rf$err.rate[trees[i], 1]
+  }
+  
+  n = which.min(err3)
+  model = modelList[n]
+  return(model[[1]])
+}
+```
+
+
+
+
+
+
+
+
+Function to extract all 100 files and to run the SVM and random forest models
+```{r}
+#make sure to set a seed
+
+
+#set includeDraws to true if predicting wins, draws and losses
+#if includeDraws is true, the reduced dataframe will have 15 columns. If includeDraws is false, the reduced dataframe will have 13 columns 
+#Set rfModel to true if you want your model to be a randomForest model, and to false if you want your model to be a ksvm model
+
+runModels2 <- function(output_dir, num_datasets , num_black_samples, includeDraws, rfModel, numTrees, cost) {
+  
+  file_name = ""
+  trainedModel = NULL
+  prediction = NULL
+  singleError = 0
+  
+  #singleValue will be the cost value used for SVM, or the number of trees used for randomForest
+  singleValue = 0
+  
+  counter = 1
+  #ChatGPT begins
+  tableSixes <- data.frame(errors = numeric(num_datasets * num_black_samples),
+                          percentBlack = numeric(num_datasets * num_black_samples),
+                          percentDraw = numeric(num_datasets * num_black_samples),
+                          percentWhite = numeric(num_datasets * num_black_samples), singleValues =                            numeric(num_datasets * num_black_samples))
+  #ChatGPT ends
+  
+  for (i in 1:num_datasets) {
+    for (j in 1:num_black_samples) {
+      
+      # Generate the file name based on the format provided
+      file_name <- file.path(output_dir, paste0("FilteredSoDatasetFullWhite", i, "Blacks", paste0("/FilteredSoDatasetFullWhite", i, "Black", j, ".json")))
+  
+      #ChatGPT begins
+      json_text <- readLines(file_name, warn = FALSE)
+      json_data <- jsonlite::fromJSON(txt = json_text, simplifyVector = FALSE)
+      #ChatGPT ends
+      
+      #JD means json data
+
+      
+      dataFrameJD = dataFrameBuilder2(json_data)
+      
+      
+      trainTestJD = trainingTestingDataset(dataFrameJD)
+
+      reducedDataframe = dataFrameReducer(trainTestJD, includeDraws)
+      
+      #filters out the draws from the results column
+      if (!includeDraws)
+        reducedDataframe <- reducedDataframe[reducedDataframe$result != 0, ]
+  
+      trainingData = trainingOrTestingDataOnly2(reducedDataframe, TRUE)
+      testingData = trainingOrTestingDataOnly2(reducedDataframe, FALSE)
+      
+      
+      if(rfModel == TRUE){
+        trainedModel = get_best_rf_model(trainingData, numTrees, c(1,2, (4:ncol(trainingData))),includeDraws)
+        singleError = trainedModel$err.rate[nrow(trainedModel$err.rate), 1]
+        singleValue = trainedModel$ntree
+      }
+      
+      else if (rfModel == FALSE){
+        trainedModel = getBestModel2(trainingData, cost, c(1,2, 4:ncol(trainingData)), includeDraws)
+        singleError = trainedModel@error
+        singleValue = trainedModel@param$C
+      }
+      
+      prediction = predict(trainedModel, testingData[,c(1,2, 4:ncol(testingData))])
+      percentages = percentMatches(prediction, testingData, includeDraws)
+
+      tableSixes[counter, ] = c(singleError, percentages[1], percentages[2], percentages[3], singleValue)
+      
+      counter = counter + 1
+    }
+  }
+  #runs if true
+  
+  if(rfModel)
+    colnames(tableSixes) <- c("errors", "% Black Win", "% Draws", "% White Win", "Tree Used")
+  
+  else
+    colnames(tableSixes) <- c("errors", "% Black Win", "% Draws", "% White Win", "Cost Used")
+  
+  return(tableSixes)
+}
+```
+
+
+
+
+Running the models
+```{r}
+directory = "C:/Users/ryne0/OneDrive/Documents/R/win-library/4.0/javaCode/Databases/Research Project/FilteredSoDatasetFullWhites/"
+
+set.seed(427)
+allModels3 = runModels2(directory, 10, 10, TRUE, TRUE, 200:250, c(1, 10, 100))
+
+
+allModelsRFWithDraws = allModels3
+allModelsRFWithDraws = data.frame(Grid = 1:100, errors = allModelsRFWithDraws$errors, percentBlack = allModelsRFWithDraws$`% Black Win`, percentDraw = allModelsRFWithDraws$`% Draws`, percentWhite = allModelsRFWithDraws$`% White Win`, treeUsed = allModelsRFWithDraws$`Tree Used`)
+colnames(allModelsRFWithDraws) = c("Grid", "errors", "% Black", "% Draw", "% White", "Tree Used")
+
+
+
+set.seed(427)
+allModelsRFWithNoDraws = runModels2(directory, 10, 10, FALSE, TRUE, 200:250, c(1, 10, 100))
+
+
+allModelsRFWithNoDraws = data.frame(Grid = 1:100, errors = allModelsRFWithNoDraws$errors, percentBlack = allModelsRFWithNoDraws$`% Black Win`, percentWhite = allModelsRFWithNoDraws$`% White Win`, treeUsed = allModelsRFWithNoDraws$`Tree Used`)
+colnames(allModelsRFWithNoDraws) = c("Grid", "errors", "% Black", "% White", "Tree Used")
+
+
+
+set.seed(427)
+allModelsSVMWithDraws = runModels2(directory, 10, 10, TRUE, FALSE, 200:250, c(1, 10, 100))
+
+
+allModelsSVMWithDraws = data.frame(Grid = 1:100, errors = allModelsSVMWithDraws$errors, percentBlack = allModelsSVMWithDraws$`% Black Win`, percentDraw = allModelsSVMWithDraws$`% Draws`, percentWhite = allModelsSVMWithDraws$`% White Win`, treeUsed = allModelsSVMWithDraws$`Cost Used`)
+colnames(allModelsSVMWithDraws) = c("Grid", "errors", "% Black", "% Draw", "% White", "Cost Used")
+
+
+
+
+set.seed(427)
+allModelsSVMWithNoDraws = runModels2(directory, 10, 10, FALSE, FALSE, 200:250, c(1, 10, 100))
+
+
+allModelsSVMWithNoDraws = data.frame(Grid = 1:100, errors = allModelsSVMWithNoDraws$errors, percentBlack = allModelsSVMWithNoDraws$`% Black Win`, percentWhite = allModelsSVMWithNoDraws$`% White Win`, treeUsed = allModelsSVMWithNoDraws$`Cost Used`)
+colnames(allModelsSVMWithNoDraws) = c("Grid", "errors", "% Black", "% White", "Cost Used")
+```
+
+
+
+
+Tables of the performance of the random forest and SVM models both with and without draws
+```{r}
+#Sample 10 numbers without replacement
+set.seed(427)
+sampled_numbers <- sort(sample(1:100, size = 8, replace = FALSE))
+
+allModelsRFWithDrawsSampled = allModelsRFWithDraws[sampled_numbers, 2:ncol(allModelsRFWithDraws)]
+allModelsRFWithNoDrawsSampled = allModelsRFWithNoDraws[sampled_numbers, 2:ncol(allModelsRFWithNoDraws)] 
+allModelsSVMWithDrawsSampled = allModelsSVMWithDraws[sampled_numbers, 2:ncol(allModelsSVMWithDraws)]
+allModelsSVMWithNoDrawsSampled = allModelsSVMWithNoDraws[sampled_numbers, 2:ncol(allModelsSVMWithNoDraws)]
+```
+
+
+
+
+Sample rows of the performance of the random forest model with draws
+```{r}
+#Note that the % Black Correct, % Draw Correct, and % White Correct columns refer to the percentage of predictions which were correct for the given sampled row
+colnames(allModelsRFWithDrawsSampled) = c("Model Error", "% Black Correct", "% Draw Correct", "% White Correct", "Tree Used")
+round(allModelsRFWithDrawsSampled, 4)
+```
+
+
+
+
+Sample rows of the performance of the random forest model without draws
+```{r}
+#Note that the % Black Correct and % White Correct columns refer to the percentage of predictions which were correct for the given sampled row
+colnames(allModelsRFWithNoDrawsSampled) = c("Model Error", "% Black Correct", "% White Correct", "Tree Used")
+round(allModelsRFWithNoDrawsSampled, 4)
+```
+
+
+
+
+Sample rows of the performance of the SVM model with draws
+```{r}
+#Note that the % Black Correct, % Draw Correct, and % White Correct columns refer to the percentage of predictions which were correct for the given sampled row
+colnames(allModelsSVMWithDrawsSampled) = c("Model Error", "% Black Correct", "% Draw Correct", "% White Correct", "Cost Used")
+round(allModelsSVMWithDrawsSampled, 4)
+```
+
+
+
+
+Sample rows of the performance of the SVM model without draws
+```{r}
+#Note that the % Black Correct and % White Correct columns refer to the percentage of predictions which were correct for the given sampled row
+colnames(allModelsSVMWithNoDrawsSampled) = c("Model Error", "% Black Correct", "% White Correct", "Cost Used")
+round(allModelsSVMWithNoDrawsSampled, 4)
+```
+
+
+
+
+Chapter 6 Plots Function
+```{r}
+#numWhites is the number of white folders there are, set to 10 for this project
+#numBlacks is the number of black folders there are within each white folder, set to 10 for this project
+
+#set showLegend to be true to show the legend, false to hide it
+chapterSixPlots = function(dataframe, numWhites, numBlacks, inputRF, inputDraws, showLegend){
+  titleName = ""
+  
+  #runs if the model used randomForest
+  if(inputRF){
+    
+    #runs if the model didn't use draws
+    if(inputDraws)
+      titleName = "Results for the Random Forest Model with Draws"
+    #runs if the model used draws
+    else
+      titleName = "Results for the Random Forest Model without Draws"
+  }
+  
+  else if (!inputRF){
+    if(inputDraws)
+      titleName = "Results for the SVM Model with Draws"
+    else
+      titleName = "Results for the SVM Model without Draws"
+    
+  }
+  #made by ChatGPT 
+  line_colors <- rainbow(numWhites)
+  
+  
+  for (i in 1:numWhites){
+        #Making the x-axis equal to the number of black grids within each white grid
+    xData = c(1:numBlacks)
+    
+    if ((i==1) && inputRF)
+      plot(x = xData, y = dataframe[(((10*i)-9):(10*i)), "errors"], xlab = "Black Ranges", ylab = "Errors", main = titleName, ylim = c(-0.16, max(dataframe$errors)) + 0.15, type="l", col=line_colors[i])
+    
+    else if((i==1) && (!inputRF))
+      plot(x = xData, y = dataframe[(((10*i)-9):(10*i)), "errors"], xlab = "Black Ranges", ylab = "Errors", main = titleName, ylim = c(-0.10, max(dataframe$errors)) + 0.08, type="l", col=line_colors[i])
+    #I added the xlim so the plot would like better
+    else
+      lines(dataframe[(((10*i)-9):(10*i)), "errors"], col=line_colors[i])
+    
+    
+  }
+  if(inputRF){
+    legend(0.85, y = max(dataframe$errors) + 0.16, legend = 1:5, fill = line_colors[1:5], cex = 0.8)
+    legend(1.85, y = max(dataframe$errors) + 0.16, legend = 6:10, fill = line_colors[6:10], cex = 0.8)
+  }
+  else if (showLegend){
+    legend(0.85, y = max(dataframe$errors) + 0.09, legend = 1:5, fill = line_colors[1:5], cex = 0.8)
+    legend(1.85, y = max(dataframe$errors) + 0.09, legend = 6:10, fill = line_colors[6:10], cex = 0.8)
+  }
+}
+```
+
+
+
+
+Figures 6.2-6.5
+```{r}
+chapterSixPlots(allModelsRFWithDraws, 10, 10, T, T, T)
+chapterSixPlots(allModelsRFWithNoDraws, 10, 10, T, F, T)
+chapterSixPlots(allModelsSVMWithDraws, 10, 10, F, T, T)
+chapterSixPlots(allModelsSVMWithNoDraws, 10, 10, F, F, T)
+```
